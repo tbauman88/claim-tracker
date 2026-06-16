@@ -260,6 +260,12 @@
     background: var(--paper);
     border-color: var(--hair-strong);
   }
+  .row .name .tag-madv {
+    color: #0b6e7d;
+    background: #e2f4f7;
+    border-color: #bfe3e9;
+  }
+  .row .name .tag + .tag { margin-left: 4px; }
 
   .cells { display: flex; gap: 6px; flex-wrap: wrap; }
   .cell {
@@ -377,8 +383,8 @@
 <div class="wrap">
   <div class="banner" id="viewBanner" hidden>Read-only view — this board updates live as the team validates claims. You can't make changes here.</div>
   <nav class="tabs" role="tablist" aria-label="Test suite">
-    <button class="tab" id="tab-integration" role="tab" type="button">Integration <span class="tabpct">0%</span></button>
     <button class="tab" id="tab-e2e_med" role="tab" type="button">E2E Medicare <span class="tabpct">0%</span></button>
+    <button class="tab" id="tab-e2e_madv" role="tab" type="button">E2E Medicare ADV <span class="tabpct">0%</span></button>
     <button class="tab" id="tab-e2e_comm" role="tab" type="button">E2E Commercial <span class="tabpct">0%</span></button>
   </nav>
   <header class="masthead">
@@ -449,39 +455,43 @@ const SHARED_DOC_ID = "shared";
 (function () {
   // ---- config: categories grouped by IP / OP ----
   var CATS = [
-    { id: "ms_drg",        name: "MS-DRG",                tag: "Medicare",  group: "Inpatient",  total: 5 },
-    { id: "custom_drg",    name: "Custom DRG",            tag: "Commercial",  group: "Inpatient",  total: 5 },
-    { id: "apr_drg",       name: "APR-DRG",               tag: "Commercial",  group: "Inpatient",  total: 5 },
-    { id: "per_diems",     name: "Per Diems",             tag: "Medicare",  group: "Inpatient",  total: 5 },
-    { id: "ip_case_rates", name: "IP Case Rates",         tag: "Commercial",  group: "Inpatient",  total: 4 },
-    { id: "ip_stoploss",   name: "IP Stoploss",           tag: "Commercial",  group: "Inpatient",  total: 5 },
-    { id: "ip_carveouts",  name: "IP Carve-Outs",         tag: "Commercial",  group: "Inpatient",  total: 5 },
-    { id: "ip_pct",        name: "IP Percent of Charges", tag: "Medicare",  group: "Inpatient",  total: 5, tabs: ["integration", "e2e_med", "e2e_comm"], totals: { e2e_med: 2, e2e_comm: 3 } },
-    { id: "apc_rates",     name: "APC Rates",             tag: "Medicare", group: "Outpatient", total: 8 },
-    { id: "physician_fee", name: "Physician Fee Schedule", tag: "Medicare", group: "Outpatient", total: 6 },
-    { id: "custom_fee",    name: "Custom Fee Schedule",   tag: "Medicare", group: "Outpatient", total: 5, tabs: ["integration", "e2e_med", "e2e_comm"], totals: { e2e_med: 2, e2e_comm: 3 } },
-    { id: "bundle",        name: "Bundle",                tag: "Medicare", group: "Outpatient", total: 5 },
-    { id: "asc",           name: "ASC",                   tag: "Commercial", group: "Outpatient", total: 5 },
-    { id: "op_case_rates", name: "OP Case Rates",         tag: "Commercial", group: "Outpatient", total: 5 },
-    { id: "op_stoploss",   name: "OP Stoploss",           tag: "Commercial", group: "Outpatient", total: 5 },
-    { id: "op_carveouts",  name: "OP Carve-Outs",         tag: "Commercial", group: "Outpatient", total: 5 },
-    { id: "op_pct",        name: "OP Percent of Charges", tag: "Medicare", group: "Outpatient", total: 5, tabs: ["integration", "e2e_med", "e2e_comm"], totals: { e2e_med: 1, e2e_comm: 4 } },
-    { id: "apc_pfs",       name: "APC / PFS",             tag: "Medicare", group: "OPPS", total: 8 },
-    { id: "apc_cfs",       name: "APC / CFS",             tag: "Medicare", group: "OPPS", total: 8 },
-    { id: "apc_pfs_cfs",   name: "APC / PFS / CFS",       tag: "Medicare", group: "OPPS", total: 3 }
+    { id: "ms_drg",        name: "MS-DRG",                group: "Inpatient",  payers: { med: 2, madv: 3, comm: 0 } },
+    { id: "custom_drg",    name: "Custom DRG",            group: "Inpatient",  payers: { med: 0, madv: 1, comm: 4 } },
+    { id: "apr_drg",       name: "APR-DRG",               group: "Inpatient",  payers: { med: 0, madv: 0, comm: 5 } },
+    { id: "ip_stoploss",   name: "IP Stoploss",           group: "Inpatient",  payers: { med: 0, madv: 0, comm: 5 } },
+    { id: "ip_case_rates", name: "IP Case Rates",         group: "Inpatient",  payers: { med: 0, madv: 0, comm: 4 } },
+    { id: "per_diems",     name: "Per Diems",             group: "Inpatient",  payers: { med: 2, madv: 3, comm: 0 } },
+    { id: "ip_carveouts",  name: "IP Carve-Outs",         group: "Inpatient",  payers: { med: 0, madv: 0, comm: 5 } },
+    { id: "ip_pct",        name: "IP Percent of Charges", group: "Inpatient",  payers: { med: 0, madv: 1, comm: 4 } },
+    { id: "apc_rates",     name: "APC Rates",             group: "Outpatient", payers: { med: 8, madv: 0, comm: 0 } },
+    { id: "asc",           name: "ASC",                   group: "Outpatient", payers: { med: 0, madv: 0, comm: 5 } },
+    { id: "apg",           name: "APG",                   group: "Outpatient", payers: { med: 0, madv: 0, comm: 5 } },
+    { id: "op_case_rates", name: "OP Case Rates",         group: "Outpatient", payers: { med: 0, madv: 0, comm: 5 } },
+    { id: "op_pct",        name: "OP Percent of Charges", group: "Outpatient", payers: { med: 0, madv: 0, comm: 5 } },
+    { id: "op_carveouts",  name: "OP Carve-Outs",         group: "Outpatient", payers: { med: 0, madv: 0, comm: 5 } },
+    { id: "op_stoploss",   name: "OP Stoploss",           group: "Outpatient", payers: { med: 0, madv: 0, comm: 5 } },
+    { id: "custom_fee",    name: "Custom Fee Schedule",   group: "Outpatient", payers: { med: 2, madv: 0, comm: 3 } },
+    { id: "physician_fee", name: "Physician Fee Schedule", group: "Outpatient", payers: { med: 3, madv: 3, comm: 0 } },
+    { id: "bundle",        name: "Bundle",                group: "Outpatient", payers: { med: 5, madv: 0, comm: 0 } },
+    { id: "apc_cfs",       name: "APC / CFS",             group: "OPPS",       payers: { med: 8, madv: 0, comm: 0 } },
+    { id: "apc_pfs",       name: "APC / PFS",             group: "OPPS",       payers: { med: 8, madv: 0, comm: 0 } },
+    { id: "apc_cfs_pfs",   name: "APC / CFS / PFS",       group: "OPPS",       payers: { med: 3, madv: 0, comm: 0 } }
   ];
   var STATES = ["pending", "pass", "fail"];
   var GLYPH = { pending: "", pass: "✓", fail: "✗" };
   var KEY = "claim-validation-tracker:v1";
 
   var TABS = [
-    { id: "integration", label: "Integration" },
-    { id: "e2e_med",     label: "E2E Medicare" },
-    { id: "e2e_comm",    label: "E2E Commercial" }
+    { id: "e2e_med",     label: "Medicare" },
+    { id: "e2e_madv",    label: "Medicare Adv" },
+    { id: "e2e_comm",    label: "Commercial" }
   ];
 
+  var PAYER_KEY = { e2e_med: "med", e2e_madv: "madv", e2e_comm: "comm" };
+  function isTab(id) { return TABS.some(function (t) { return t.id === id; }); }
+
   var data = {};            // tabId -> { catId -> [statuses] }
-  var active = "integration";
+  var active = "e2e_med";
   var state;                // live reference to data[active]
   var lastUpdated = null;
 
@@ -491,18 +501,18 @@ const SHARED_DOC_ID = "shared";
   var dbDoc = null, lastWrittenStamp = null, writeTimer = null;
 
   function catsFor(tabId) {
-    return CATS.filter(function (c) {
-      if (c.tabs) return c.tabs.indexOf(tabId) !== -1;
-      var medicare = !/non|commercial/i.test(c.tag);
-      if (tabId === "integration") return c.group !== "OPPS";
-      if (tabId === "e2e_med") return medicare;
-      if (tabId === "e2e_comm") return !medicare;
-      return true;
-    });
+    if (tabId === "integration") return CATS.slice();
+    var key = PAYER_KEY[tabId];
+    if (!key) return CATS.slice();
+    return CATS.filter(function (c) { return (c.payers[key] || 0) > 0; });
   }
 
   function totalFor(c, tabId) {
-    return (c.totals && c.totals[tabId] != null) ? c.totals[tabId] : c.total;
+    if (tabId === "integration") {
+      return (c.payers.med || 0) + (c.payers.madv || 0) + (c.payers.comm || 0);
+    }
+    var key = PAYER_KEY[tabId];
+    return key ? (c.payers[key] || 0) : 0;
   }
 
   function blank(tabId) {
@@ -531,32 +541,23 @@ const SHARED_DOC_ID = "shared";
   function buildBlank() {
     data = {};
     TABS.forEach(function (t) { data[t.id] = blank(t.id); });
-    if (!data[active]) active = TABS[0].id;
+    if (!isTab(active)) active = TABS[0].id;
     state = data[active];
   }
 
-  function migrateLegacy() {
-    if (data.e2e && !data.e2e_med && !data.e2e_comm) {
-      data.e2e_med = {}; data.e2e_comm = {};
-      CATS.forEach(function (c) {
-        var tgt = /non|commercial/i.test(c.tag) ? data.e2e_comm : data.e2e_med;
-        if (Array.isArray(data.e2e[c.id])) tgt[c.id] = data.e2e[c.id];
-      });
-      delete data.e2e;
-    }
-  }
+  function migrateLegacy() { /* older single-/dual-tab formats no longer in use */ }
 
   function reconcileAll() {
     TABS.forEach(function (t) {
       if (!data[t.id]) data[t.id] = blank(t.id);
       reconcile(data[t.id], t.id);
     });
-    if (!data[active]) active = TABS[0].id;
+    if (!isTab(active)) active = TABS[0].id;
     state = data[active];
   }
 
   function loadActive() {
-    try { var a = localStorage.getItem(ACTIVE_KEY); if (a) active = a; } catch (e) {}
+    try { var a = localStorage.getItem(ACTIVE_KEY); if (a && isTab(a)) active = a; } catch (e) {}
   }
   function saveActive() {
     try { localStorage.setItem(ACTIVE_KEY, active); } catch (e) {}
@@ -702,8 +703,11 @@ const SHARED_DOC_ID = "shared";
     var nm = document.createElement("div");
     nm.className = "name";
     if (active === "integration") {
-      var payerCls = /non|commercial/i.test(c.tag) ? "tag-nonmed" : "tag-med";
-      nm.innerHTML = c.name + '<span class="tag ' + payerCls + '">' + c.tag + '</span>';
+      var chips = "";
+      if (c.payers.med > 0)  chips += '<span class="tag tag-med" title="Medicare">MED</span>';
+      if (c.payers.madv > 0) chips += '<span class="tag tag-madv" title="Medicare Advantage">ADV</span>';
+      if (c.payers.comm > 0) chips += '<span class="tag tag-nonmed" title="Commercial">COM</span>';
+      nm.innerHTML = c.name + chips;
     } else {
       nm.textContent = c.name;
     }

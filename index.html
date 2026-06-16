@@ -1,0 +1,745 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Claim Validation Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+
+<style>
+  :root {
+    --paper: #f5f7f9;
+    --surface: #ffffff;
+    --ink: #161b22;
+    --muted: #5b6573;
+    --faint: #8a94a3;
+    --hair: #e3e7ec;
+    --hair-strong: #cfd5dd;
+    --indigo: #1f2a44;
+    --pass: #0f8f6b;
+    --pass-soft: #e2f3ec;
+    --fail: #cf4035;
+    --fail-soft: #fae6e4;
+    --pend: #c7841a;
+    --pend-soft: #faf0db;
+    --display: "Space Grotesk", system-ui, sans-serif;
+    --body: "Inter", system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.45;
+  }
+
+  .wrap { max-width: 980px; margin: 0 auto; padding: 28px 22px 64px; }
+
+  /* ---------- tabs ---------- */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--hair-strong);
+    margin-bottom: 24px;
+  }
+  .tab {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: 0.02em;
+    color: var(--muted);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 11px 16px;
+    margin-bottom: -1px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    transition: color .15s, border-color .15s;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab.active { color: var(--indigo); border-bottom-color: var(--indigo); }
+  .tab:focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; border-radius: 4px; }
+  .tab .tabpct {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--faint);
+    background: var(--paper);
+    border: 1px solid var(--hair);
+    border-radius: 999px;
+    padding: 1px 7px;
+  }
+  .tab.active .tabpct {
+    color: var(--pass);
+    background: var(--pass-soft);
+    border-color: var(--pass-soft);
+  }
+
+  /* ---------- Header / headline readout ---------- */
+  .masthead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 18px;
+  }
+  .title-block .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin: 0 0 6px;
+  }
+  .title-block h1 {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 27px;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+
+  .headline {
+    text-align: right;
+    min-width: 200px;
+  }
+  .headline .pct {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 54px;
+    line-height: 0.9;
+    color: var(--pass);
+    font-variant-numeric: tabular-nums;
+  }
+  .headline .pct .sym { font-size: 26px; color: var(--faint); }
+  .headline .sub {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 8px;
+    letter-spacing: 0.02em;
+  }
+
+  /* overall bar */
+  .overall-bar {
+    height: 8px;
+    border-radius: 6px;
+    background: var(--hair);
+    overflow: hidden;
+    display: flex;
+    margin: 18px 0 4px;
+  }
+  .overall-bar i { height: 100%; display: block; transition: width .35s ease; }
+  .overall-bar .seg-pass { background: var(--pass); }
+  .overall-bar .seg-fail { background: var(--fail); }
+
+  .counts {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 6px;
+  }
+  .counts b { color: var(--ink); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .dot.p { background: var(--pass); }
+  .dot.f { background: var(--fail); }
+  .dot.d { background: var(--hair-strong); }
+
+  /* ---------- toolbar ---------- */
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 22px 0 10px;
+  }
+  .btn {
+    font-family: var(--body);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--hair-strong);
+    border-radius: 8px;
+    padding: 9px 14px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s, transform .05s;
+  }
+  .btn:hover { border-color: var(--indigo); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { background: var(--indigo); color: #fff; border-color: var(--indigo); }
+  .btn.primary:hover { background: #16203a; }
+  .btn.ghost { color: var(--muted); border-color: var(--hair); }
+  .btn.ghost:hover { color: var(--fail); border-color: var(--fail); }
+
+  .legend {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .chip { width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--hair-strong); display: inline-grid; place-items: center; font-size: 10px; font-weight: 700; }
+  .chip.p { background: var(--pass-soft); border-color: var(--pass); color: var(--pass); }
+  .chip.f { background: var(--fail-soft); border-color: var(--fail); color: var(--fail); }
+  .chip.d { background: var(--surface); }
+
+  /* ---------- group sections ---------- */
+  .group { margin-top: 26px; }
+  .group-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--hair-strong);
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+  }
+  .group-head h2 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin: 0;
+    color: var(--indigo);
+  }
+  .group-head .gpct {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .group-head .gpct b { color: var(--ink); font-weight: 700; }
+
+  /* ---------- category row ---------- */
+  .row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 16px;
+    padding: 13px 4px;
+    border-bottom: 1px solid var(--hair);
+  }
+  .row .name {
+    font-weight: 600;
+    font-size: 14.5px;
+  }
+  .row .name .tag {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    font-weight: 600;
+    margin-left: 9px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .row .name .tag-med {
+    color: var(--indigo);
+    background: #eaf0fb;
+    border-color: #d6e1f6;
+  }
+  .row .name .tag-nonmed {
+    color: var(--muted);
+    background: var(--paper);
+    border-color: var(--hair-strong);
+  }
+
+  .cells { display: flex; gap: 6px; flex-wrap: wrap; }
+  .cell {
+    width: 30px;
+    height: 30px;
+    border-radius: 7px;
+    border: 1.5px solid var(--hair-strong);
+    background: var(--surface);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--faint);
+    padding: 0;
+    transition: background .12s, border-color .12s, color .12s, transform .04s;
+  }
+  .cell:hover { border-color: var(--indigo); }
+  .cell:active { transform: scale(0.92); }
+  .cell:focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; }
+  .cell.pass { background: var(--pass-soft); border-color: var(--pass); color: var(--pass); }
+  .cell.fail { background: var(--fail-soft); border-color: var(--fail); color: var(--fail); }
+
+  .row .readout {
+    font-family: var(--mono);
+    font-size: 13px;
+    text-align: right;
+    min-width: 92px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .row .readout b { color: var(--ink); }
+  .row.complete .name { color: var(--pass); }
+  .row.hasfail .readout .pct { color: var(--fail); }
+
+  .stamp {
+    margin-top: 30px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--faint);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 22px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--ink);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 10px 18px;
+    border-radius: 999px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s, transform .2s;
+    z-index: 50;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  @media (max-width: 620px) {
+    .row { grid-template-columns: 1fr; gap: 8px; }
+    .row .readout { text-align: left; min-width: 0; }
+    .headline { text-align: left; }
+    .masthead { align-items: flex-start; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+
+  /* ---------- print / stakeholder snapshot ---------- */
+  @media print {
+    body { background: #fff; }
+    .toolbar, .stamp .hint { display: none; }
+    .cell { cursor: default; }
+    .wrap { max-width: 100%; padding: 0; }
+    .row, .group { break-inside: avoid; }
+  }
+</style>
+
+<div class="wrap">
+  <nav class="tabs" role="tablist" aria-label="Test suite">
+    <button class="tab" id="tab-integration" role="tab" type="button">Integration <span class="tabpct">0%</span></button>
+    <button class="tab" id="tab-e2e_med" role="tab" type="button">E2E Medicare <span class="tabpct">0%</span></button>
+    <button class="tab" id="tab-e2e_comm" role="tab" type="button">E2E Commercial <span class="tabpct">0%</span></button>
+  </nav>
+  <header class="masthead">
+    <div class="title-block">
+      <p class="eyebrow">Validate.Pricing · QC Status</p>
+      <h1>Claim Validation Tracker</h1>
+    </div>
+    <div class="headline">
+      <div class="pct"><span id="hPct">0</span><span class="sym">%</span></div>
+      <div class="sub" id="hSub">0 / 0 validated</div>
+    </div>
+  </header>
+
+  <div class="overall-bar" aria-hidden="true">
+    <i class="seg-pass" id="ovPass" style="width:0"></i>
+    <i class="seg-fail" id="ovFail" style="width:0"></i>
+  </div>
+  <div class="counts">
+    <span><i class="dot p"></i><b id="cPass">0</b> validated</span>
+    <span><i class="dot f"></i><b id="cFail">0</b> failed</span>
+    <span><i class="dot d"></i><b id="cPend">0</b> pending</span>
+    <span>of <b id="cTotal">0</b> total claims</span>
+  </div>
+
+  <div class="toolbar">
+    <div class="legend">
+      <span><i class="chip d"></i> pending</span>
+      <span><i class="chip p">✓</i> validated</span>
+      <span><i class="chip f">✗</i> failed</span>
+    </div>
+  </div>
+
+  <div id="groups"></div>
+
+  <div class="stamp">
+    <span id="updated">No changes yet</span>
+    <span class="hint">Click a cell to cycle: pending → validated → failed</span>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  // ---- config: categories grouped by IP / OP ----
+  var CATS = [
+    { id: "ms_drg",        name: "MS-DRG",                tag: "Medicare",  group: "Inpatient",  total: 5 },
+    { id: "custom_drg",    name: "Custom DRG",            tag: "Commercial",  group: "Inpatient",  total: 5 },
+    { id: "apr_drg",       name: "APR-DRG",               tag: "Commercial",  group: "Inpatient",  total: 5 },
+    { id: "per_diems",     name: "Per Diems",             tag: "Medicare",  group: "Inpatient",  total: 5 },
+    { id: "ip_case_rates", name: "IP Case Rates",         tag: "Commercial",  group: "Inpatient",  total: 4 },
+    { id: "ip_stoploss",   name: "IP Stoploss",           tag: "Commercial",  group: "Inpatient",  total: 5 },
+    { id: "ip_carveouts",  name: "IP Carve-Outs",         tag: "Commercial",  group: "Inpatient",  total: 5 },
+    { id: "ip_pct",        name: "IP Percent of Charges", tag: "Medicare",  group: "Inpatient",  total: 5, tabs: ["integration", "e2e_med", "e2e_comm"], totals: { e2e_med: 2, e2e_comm: 3 } },
+    { id: "apc_rates",     name: "APC Rates",             tag: "Medicare", group: "Outpatient", total: 8 },
+    { id: "physician_fee", name: "Physician Fee Schedule", tag: "Medicare", group: "Outpatient", total: 6 },
+    { id: "custom_fee",    name: "Custom Fee Schedule",   tag: "Medicare", group: "Outpatient", total: 5, tabs: ["integration", "e2e_med", "e2e_comm"], totals: { e2e_med: 2, e2e_comm: 3 } },
+    { id: "bundle",        name: "Bundle",                tag: "Medicare", group: "Outpatient", total: 5 },
+    { id: "asc",           name: "ASC",                   tag: "Commercial", group: "Outpatient", total: 5 },
+    { id: "op_case_rates", name: "OP Case Rates",         tag: "Commercial", group: "Outpatient", total: 5 },
+    { id: "op_stoploss",   name: "OP Stoploss",           tag: "Commercial", group: "Outpatient", total: 5 },
+    { id: "op_carveouts",  name: "OP Carve-Outs",         tag: "Commercial", group: "Outpatient", total: 5 },
+    { id: "op_pct",        name: "OP Percent of Charges", tag: "Medicare", group: "Outpatient", total: 5, tabs: ["integration", "e2e_med", "e2e_comm"], totals: { e2e_med: 1, e2e_comm: 4 } },
+    { id: "apc_pfs",       name: "APC / PFS",             tag: "Medicare", group: "OPPS", total: 8 },
+    { id: "apc_cfs",       name: "APC / CFS",             tag: "Medicare", group: "OPPS", total: 8 },
+    { id: "apc_pfs_cfs",   name: "APC / PFS / CFS",       tag: "Medicare", group: "OPPS", total: 3 }
+  ];
+  var STATES = ["pending", "pass", "fail"];
+  var GLYPH = { pending: "", pass: "✓", fail: "✗" };
+  var KEY = "claim-validation-tracker:v1";
+
+  var TABS = [
+    { id: "integration", label: "Integration" },
+    { id: "e2e_med",     label: "E2E Medicare" },
+    { id: "e2e_comm",    label: "E2E Commercial" }
+  ];
+
+  var data = {};            // tabId -> { catId -> [statuses] }
+  var active = "integration";
+  var state;                // live reference to data[active]
+  var lastUpdated = null;
+
+  function catsFor(tabId) {
+    return CATS.filter(function (c) {
+      if (c.tabs) return c.tabs.indexOf(tabId) !== -1;
+      var medicare = !/non|commercial/i.test(c.tag);
+      if (tabId === "integration") return c.group !== "OPPS";
+      if (tabId === "e2e_med") return medicare;
+      if (tabId === "e2e_comm") return !medicare;
+      return true;
+    });
+  }
+
+  function totalFor(c, tabId) {
+    return (c.totals && c.totals[tabId] != null) ? c.totals[tabId] : c.total;
+  }
+
+  function blank(tabId) {
+    var s = {};
+    catsFor(tabId).forEach(function (c) {
+      s[c.id] = new Array(totalFor(c, tabId)).fill("pending");
+    });
+    return s;
+  }
+
+  function reconcile(ts, tabId) {
+    catsFor(tabId).forEach(function (c) {
+      var tot = totalFor(c, tabId);
+      if (!Array.isArray(ts[c.id]) || ts[c.id].length !== tot) {
+        var arr = new Array(tot).fill("pending");
+        if (Array.isArray(ts[c.id])) {
+          for (var i = 0; i < Math.min(arr.length, ts[c.id].length); i++) arr[i] = ts[c.id][i];
+        }
+        ts[c.id] = arr;
+      }
+    });
+    return ts;
+  }
+
+  // ---- persistence (graceful fallback if storage unavailable) ----
+  async function load() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (parsed.data) {
+          data = parsed.data;
+          active = parsed.active || "integration";
+        } else if (parsed.state) {
+          // migrate oldest single-list format into the Integration tab
+          data = { integration: parsed.state };
+        }
+        lastUpdated = parsed.updated || null;
+      }
+    } catch (e) { /* not found or storage off */ }
+
+    // split the old combined E2E tab into payer-specific tabs
+    if (data.e2e && !data.e2e_med && !data.e2e_comm) {
+      data.e2e_med = {};
+      data.e2e_comm = {};
+      CATS.forEach(function (c) {
+        var tgt = /non|commercial/i.test(c.tag) ? data.e2e_comm : data.e2e_med;
+        if (Array.isArray(data.e2e[c.id])) tgt[c.id] = data.e2e[c.id];
+      });
+      delete data.e2e;
+      if (active === "e2e") active = "e2e_med";
+    }
+
+    TABS.forEach(function (t) {
+      if (!data[t.id]) data[t.id] = blank(t.id);
+      reconcile(data[t.id], t.id);
+    });
+    if (!data[active]) active = TABS[0].id;
+    state = data[active];
+  }
+
+  async function save() {
+    lastUpdated = new Date().toISOString();
+    try {
+      localStorage.setItem(KEY, JSON.stringify({ data: data, active: active, updated: lastUpdated }));
+    } catch (e) { /* storage unavailable; in-memory only */ }
+    renderStamp();
+  }
+
+  // ---- math ----
+  function tally(ids) {
+    var pass = 0, fail = 0, pend = 0, total = 0;
+    ids.forEach(function (id) {
+      state[id].forEach(function (st) {
+        total++;
+        if (st === "pass") pass++;
+        else if (st === "fail") fail++;
+        else pend++;
+      });
+    });
+    return { pass: pass, fail: fail, pend: pend, total: total };
+  }
+  function pct(n, d) { return d ? Math.round((n / d) * 100) : 0; }
+
+  function groupOrder(tabId) {
+    var out = [];
+    catsFor(tabId).forEach(function (c) { if (out.indexOf(c.group) === -1) out.push(c.group); });
+    return out;
+  }
+
+  function tabPct(tabId) {
+    var ts = data[tabId], pass = 0, total = 0;
+    catsFor(tabId).forEach(function (c) {
+      ts[c.id].forEach(function (st) { total++; if (st === "pass") pass++; });
+    });
+    return pct(pass, total);
+  }
+
+  function switchTab(id) {
+    if (id === active) return;
+    active = id;
+    state = data[active];
+    render();
+    save();
+  }
+
+  function renderTabs() {
+    TABS.forEach(function (t) {
+      var btn = document.getElementById("tab-" + t.id);
+      if (!btn) return;
+      btn.classList.toggle("active", t.id === active);
+      btn.setAttribute("aria-selected", t.id === active ? "true" : "false");
+      var badge = btn.querySelector(".tabpct");
+      if (badge) badge.textContent = tabPct(t.id) + "%";
+    });
+  }
+
+  // ---- render ----
+  function render() {
+    var host = document.getElementById("groups");
+    host.innerHTML = "";
+    groupOrder(active).forEach(function (g) {
+      var cats = catsFor(active).filter(function (c) { return c.group === g; });
+      var t = tally(cats.map(function (c) { return c.id; }));
+
+      var sec = document.createElement("section");
+      sec.className = "group";
+      sec.innerHTML =
+        '<div class="group-head"><h2>' + g + '</h2>' +
+        '<div class="gpct"><b>' + pct(t.pass, t.total) + '%</b> validated · ' +
+        t.pass + '/' + t.total + (t.fail ? ' · ' + t.fail + ' failed' : '') + '</div></div>';
+
+      cats.forEach(function (c) {
+        sec.appendChild(rowEl(c));
+      });
+      host.appendChild(sec);
+    });
+    renderHeadline();
+    renderStamp();
+    renderTabs();
+  }
+
+  function rowEl(c) {
+    var arr = state[c.id];
+    var p = arr.filter(function (s) { return s === "pass"; }).length;
+    var f = arr.filter(function (s) { return s === "fail"; }).length;
+
+    var row = document.createElement("div");
+    row.className = "row" + (p === arr.length ? " complete" : "") + (f ? " hasfail" : "");
+
+    var nm = document.createElement("div");
+    nm.className = "name";
+    if (active === "integration") {
+      var payerCls = /non|commercial/i.test(c.tag) ? "tag-nonmed" : "tag-med";
+      nm.innerHTML = c.name + '<span class="tag ' + payerCls + '">' + c.tag + '</span>';
+    } else {
+      nm.textContent = c.name;
+    }
+
+    var cells = document.createElement("div");
+    cells.className = "cells";
+    arr.forEach(function (st, i) {
+      var b = document.createElement("button");
+      b.className = "cell" + (st === "pass" ? " pass" : st === "fail" ? " fail" : "");
+      b.type = "button";
+      b.textContent = GLYPH[st];
+      b.setAttribute("aria-label", c.name + " claim " + (i + 1) + ": " + st);
+      b.onclick = function () { cycle(c.id, i); };
+      cells.appendChild(b);
+    });
+
+    var ro = document.createElement("div");
+    ro.className = "readout";
+    ro.innerHTML = '<b>' + p + '</b>/' + arr.length + ' · <span class="pct">' + pct(p, arr.length) + '%</span>';
+
+    row.appendChild(nm);
+    row.appendChild(cells);
+    row.appendChild(ro);
+    return row;
+  }
+
+  function renderHeadline() {
+    var t = tally(catsFor(active).map(function (c) { return c.id; }));
+    document.getElementById("hPct").textContent = pct(t.pass, t.total);
+    document.getElementById("hSub").textContent = t.pass + " / " + t.total + " validated";
+    document.getElementById("cPass").textContent = t.pass;
+    document.getElementById("cFail").textContent = t.fail;
+    document.getElementById("cPend").textContent = t.pend;
+    document.getElementById("cTotal").textContent = t.total;
+    document.getElementById("ovPass").style.width = pct(t.pass, t.total) + "%";
+    document.getElementById("ovFail").style.width = pct(t.fail, t.total) + "%";
+  }
+
+  function renderStamp() {
+    var el = document.getElementById("updated");
+    if (!lastUpdated) { el.textContent = "No changes yet"; return; }
+    var d = new Date(lastUpdated);
+    el.textContent = "Last updated " + d.toLocaleString();
+  }
+
+  function cycle(id, i) {
+    var cur = state[id][i];
+    var next = STATES[(STATES.indexOf(cur) + 1) % STATES.length];
+    state[id][i] = next;
+    render();
+    save();
+  }
+
+  // ---- export helpers ----
+  function summaryText() {
+    var t = tally(catsFor(active).map(function (c) { return c.id; }));
+    var lines = [];
+    lines.push("CLAIM VALIDATION STATUS — " + new Date().toLocaleDateString());
+    lines.push("Overall: " + pct(t.pass, t.total) + "% validated (" + t.pass + "/" + t.total + ")"
+      + (t.fail ? "  |  " + t.fail + " failed" : "") + (t.pend ? "  |  " + t.pend + " pending" : ""));
+    lines.push("");
+    groupOrder(active).forEach(function (g) {
+      lines.push(g.toUpperCase());
+      catsFor(active).filter(function (c) { return c.group === g; }).forEach(function (c) {
+        var arr = state[c.id];
+        var p = arr.filter(function (s) { return s === "pass"; }).length;
+        var f = arr.filter(function (s) { return s === "fail"; }).length;
+        var label = "  " + c.name + ":";
+        while (label.length < 28) label += " ";
+        lines.push(label + p + "/" + totalFor(c, active) + " (" + pct(p, totalFor(c, active)) + "%)" + (f ? "  [" + f + " failed]" : ""));
+      });
+      lines.push("");
+    });
+    return lines.join("\n").trim();
+  }
+
+  function csvText() {
+    var rows = [["Group", "Pricing Method", "Validated", "Failed", "Pending", "Total", "Percent"]];
+    catsFor(active).forEach(function (c) {
+      var arr = state[c.id];
+      var p = arr.filter(function (s) { return s === "pass"; }).length;
+      var f = arr.filter(function (s) { return s === "fail"; }).length;
+      var pe = arr.filter(function (s) { return s === "pending"; }).length;
+      rows.push([c.group, c.name, p, f, pe, totalFor(c, active), pct(p, totalFor(c, active)) + "%"]);
+    });
+    var t = tally(catsFor(active).map(function (c) { return c.id; }));
+    rows.push(["TOTAL", "All methods", t.pass, t.fail, t.pend, t.total, pct(t.pass, t.total) + "%"]);
+    return rows.map(function (r) {
+      return r.map(function (v) {
+        v = String(v);
+        return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+      }).join(",");
+    }).join("\n");
+  }
+
+  function toast(msg) {
+    var el = document.getElementById("toast");
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(el._t);
+    el._t = setTimeout(function () { el.classList.remove("show"); }, 1800);
+  }
+
+  function copySummary() {
+    var txt = summaryText();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(
+        function () { toast("Summary copied to clipboard"); },
+        function () { fallbackCopy(txt); }
+      );
+    } else { fallbackCopy(txt); }
+  }
+  function fallbackCopy(txt) {
+    var ta = document.createElement("textarea");
+    ta.value = txt; document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); toast("Summary copied to clipboard"); }
+    catch (e) { toast("Copy failed — select & copy manually"); }
+    document.body.removeChild(ta);
+  }
+
+  function downloadCsv() {
+    var blob = new Blob([csvText()], { type: "text/csv;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "claim-validation-" + new Date().toISOString().slice(0, 10) + ".csv";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast("CSV downloaded");
+  }
+
+  // ---- wire up ----
+  TABS.forEach(function (t) {
+    var btn = document.getElementById("tab-" + t.id);
+    if (btn) btn.onclick = function () { switchTab(t.id); };
+  });
+
+  (async function init() {
+    await load();
+    render();
+  })();
+})();
+</script>

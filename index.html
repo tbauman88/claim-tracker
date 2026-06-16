@@ -344,9 +344,38 @@
     .wrap { max-width: 100%; padding: 0; }
     .row, .group { break-inside: avoid; }
   }
+  .banner {
+    background: #fff6e6;
+    border: 1px solid #f0d9a8;
+    color: #8a6314;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 9px 14px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+  }
+  .sync { font-weight: 700; letter-spacing: .02em; }
+  .sync.live { color: var(--pass); }
+  .sync.off { color: var(--fail); }
+  .sync.localonly { color: var(--pend); }
+  .btn {
+    font-family: var(--body);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--hair-strong);
+    border-radius: 8px;
+    padding: 8px 13px;
+    cursor: pointer;
+  }
+  .btn:hover { border-color: var(--indigo); }
+  .cell.locked { cursor: default; }
+  .cell.locked:hover { border-color: var(--hair-strong); }
 </style>
 
 <div class="wrap">
+  <div class="banner" id="viewBanner" hidden>Read-only view — this board updates live as the team validates claims. You can't make changes here.</div>
   <nav class="tabs" role="tablist" aria-label="Test suite">
     <button class="tab" id="tab-integration" role="tab" type="button">Integration <span class="tabpct">0%</span></button>
     <button class="tab" id="tab-e2e_med" role="tab" type="button">E2E Medicare <span class="tabpct">0%</span></button>
@@ -375,6 +404,7 @@
   </div>
 
   <div class="toolbar">
+    <button class="btn" id="btnShare" type="button" hidden>Copy stakeholder link</button>
     <div class="legend">
       <span><i class="chip d"></i> pending</span>
       <span><i class="chip p">✓</i> validated</span>
@@ -385,14 +415,37 @@
   <div id="groups"></div>
 
   <div class="stamp">
-    <span id="updated">No changes yet</span>
-    <span class="hint">Click a cell to cycle: pending → validated → failed</span>
+    <span><span id="syncState" class="sync">Connecting…</span> · <span id="updated">No changes yet</span></span>
+    <span class="hint" id="hint">Click a cell to cycle: pending → validated → failed</span>
   </div>
 </div>
 
 <div class="toast" id="toast"></div>
 
-<script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import {
+  getFirestore, doc, onSnapshot, setDoc
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+/* ============================================================
+   STEP 1 — paste your Firebase web config between the braces.
+   Firebase console -> Project settings -> "Your apps" -> Web app.
+   Leave the PASTE_ values as-is to run locally with browser-only
+   storage (no sharing) until you're ready.
+   ============================================================ */
+const firebaseConfig = {
+  apiKey: "AIzaSyClpgxsDu-plNUcYjn5gHmiFMNeGJQYLRU",
+  authDomain: "claim-validation-tracker.firebaseapp.com",
+  projectId: "claim-validation-tracker",
+  storageBucket: "claim-validation-tracker.firebasestorage.app",
+  messagingSenderId: "192685355497",
+  appId: "1:192685355497:web:9f9f358b60ccb9d9de9b78"
+};
+/* Board id in Firestore. Change it to run more than one board. */
+const SHARED_DOC_ID = "shared";
+/* ============================================================ */
+
 (function () {
   // ---- config: categories grouped by IP / OP ----
   var CATS = [
@@ -432,6 +485,11 @@
   var state;                // live reference to data[active]
   var lastUpdated = null;
 
+  var READONLY = /[?&]view=1\b/.test(location.search) || location.hash.replace("#", "") === "view";
+  var ACTIVE_KEY = KEY + ":active";
+  var USING_FB = !!(firebaseConfig && firebaseConfig.projectId && firebaseConfig.projectId.indexOf("PASTE") === -1);
+  var dbDoc = null, lastWrittenStamp = null, writeTimer = null;
+
   function catsFor(tabId) {
     return CATS.filter(function (c) {
       if (c.tabs) return c.tabs.indexOf(tabId) !== -1;
@@ -469,35 +527,26 @@
     return ts;
   }
 
-  // ---- persistence (graceful fallback if storage unavailable) ----
-  async function load() {
-    try {
-      var raw = localStorage.getItem(KEY);
-      if (raw) {
-        var parsed = JSON.parse(raw);
-        if (parsed.data) {
-          data = parsed.data;
-          active = parsed.active || "integration";
-        } else if (parsed.state) {
-          // migrate oldest single-list format into the Integration tab
-          data = { integration: parsed.state };
-        }
-        lastUpdated = parsed.updated || null;
-      }
-    } catch (e) { /* not found or storage off */ }
+  // ---- shared-state helpers ----
+  function buildBlank() {
+    data = {};
+    TABS.forEach(function (t) { data[t.id] = blank(t.id); });
+    if (!data[active]) active = TABS[0].id;
+    state = data[active];
+  }
 
-    // split the old combined E2E tab into payer-specific tabs
+  function migrateLegacy() {
     if (data.e2e && !data.e2e_med && !data.e2e_comm) {
-      data.e2e_med = {};
-      data.e2e_comm = {};
+      data.e2e_med = {}; data.e2e_comm = {};
       CATS.forEach(function (c) {
         var tgt = /non|commercial/i.test(c.tag) ? data.e2e_comm : data.e2e_med;
         if (Array.isArray(data.e2e[c.id])) tgt[c.id] = data.e2e[c.id];
       });
       delete data.e2e;
-      if (active === "e2e") active = "e2e_med";
     }
+  }
 
+  function reconcileAll() {
     TABS.forEach(function (t) {
       if (!data[t.id]) data[t.id] = blank(t.id);
       reconcile(data[t.id], t.id);
@@ -506,11 +555,55 @@
     state = data[active];
   }
 
-  async function save() {
-    lastUpdated = new Date().toISOString();
+  function loadActive() {
+    try { var a = localStorage.getItem(ACTIVE_KEY); if (a) active = a; } catch (e) {}
+  }
+  function saveActive() {
+    try { localStorage.setItem(ACTIVE_KEY, active); } catch (e) {}
+  }
+
+  // ---- browser-only fallback (used until Firebase config is filled in) ----
+  function loadLocal() {
     try {
-      localStorage.setItem(KEY, JSON.stringify({ data: data, active: active, updated: lastUpdated }));
-    } catch (e) { /* storage unavailable; in-memory only */ }
+      var raw = localStorage.getItem(KEY);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (parsed.data) data = parsed.data;
+        else if (parsed.state) data = { integration: parsed.state };
+        lastUpdated = parsed.updated || null;
+      }
+    } catch (e) {}
+    migrateLegacy();
+    reconcileAll();
+  }
+  function saveLocal() {
+    lastUpdated = new Date().toISOString();
+    try { localStorage.setItem(KEY, JSON.stringify({ data: data, updated: lastUpdated })); } catch (e) {}
+  }
+
+  // ---- Firestore (shared) ----
+  function applyRemote(remote) {
+    data = (remote && remote.data) ? remote.data : {};
+    lastUpdated = (remote && remote.updated) || null;
+    migrateLegacy();
+    reconcileAll();
+  }
+  function saveRemote() {
+    if (READONLY || !dbDoc) return;
+    lastUpdated = new Date().toISOString();
+    lastWrittenStamp = lastUpdated;
+    var payload = { data: data, updated: lastUpdated };
+    clearTimeout(writeTimer);
+    writeTimer = setTimeout(function () {
+      setDoc(dbDoc, payload)
+        .then(function () { setSync("live"); })
+        .catch(function (err) { console.error("Firestore write failed", err); setSync("off"); });
+    }, 350);
+  }
+
+  // unified save for data changes
+  function save() {
+    if (USING_FB) saveRemote(); else saveLocal();
     renderStamp();
   }
 
@@ -543,12 +636,23 @@
     return pct(pass, total);
   }
 
+  function setSync(name) {
+    var el = document.getElementById("syncState");
+    if (!el) return;
+    el.className = "sync " + name;
+    el.textContent =
+      name === "live" ? (READONLY ? "\u25CF Live (read-only)" : "\u25CF Live") :
+      name === "off" ? "\u25CF Offline" :
+      name === "localonly" ? "\u25CF Local only (not shared)" :
+      "Connecting\u2026";
+  }
+
   function switchTab(id) {
     if (id === active) return;
     active = id;
     state = data[active];
     render();
-    save();
+    saveActive();
   }
 
   function renderTabs() {
@@ -608,11 +712,11 @@
     cells.className = "cells";
     arr.forEach(function (st, i) {
       var b = document.createElement("button");
-      b.className = "cell" + (st === "pass" ? " pass" : st === "fail" ? " fail" : "");
+      b.className = "cell" + (st === "pass" ? " pass" : st === "fail" ? " fail" : "") + (READONLY ? " locked" : "");
       b.type = "button";
       b.textContent = GLYPH[st];
       b.setAttribute("aria-label", c.name + " claim " + (i + 1) + ": " + st);
-      b.onclick = function () { cycle(c.id, i); };
+      if (READONLY) { b.disabled = true; } else { b.onclick = function () { cycle(c.id, i); }; }
       cells.appendChild(b);
     });
 
@@ -646,6 +750,7 @@
   }
 
   function cycle(id, i) {
+    if (READONLY) return;
     var cur = state[id][i];
     var next = STATES[(STATES.indexOf(cur) + 1) % STATES.length];
     state[id][i] = next;
@@ -737,9 +842,65 @@
     if (btn) btn.onclick = function () { switchTab(t.id); };
   });
 
-  (async function init() {
-    await load();
+  function setupShareButton() {
+    var b = document.getElementById("btnShare");
+    if (!b) return;
+    if (READONLY || !USING_FB) { b.hidden = true; return; }
+    b.hidden = false;
+    b.onclick = function () {
+      var link = location.origin + location.pathname + "?view=1";
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(link).then(
+          function () { toast("Stakeholder (view-only) link copied"); },
+          function () { toast(link); }
+        );
+      } else { toast(link); }
+    };
+  }
+
+  function init() {
+    loadActive();
+    buildBlank();                 // render something before remote data arrives
+
+    if (READONLY) {
+      var ban = document.getElementById("viewBanner");
+      if (ban) ban.hidden = false;
+      var hint = document.getElementById("hint");
+      if (hint) hint.textContent = "Live status — updates automatically";
+    }
+    setupShareButton();
+
+    if (USING_FB) {
+      setSync("connecting");
+      try {
+        var app = initializeApp(firebaseConfig);
+        var db = getFirestore(app);
+        dbDoc = doc(db, "trackers", SHARED_DOC_ID);
+        onSnapshot(dbDoc, function (snap) {
+          if (snap.exists()) {
+            applyRemote(snap.data());
+          } else if (!READONLY) {
+            buildBlank();           // first run: seed the shared board
+            saveRemote();
+          }
+          setSync("live");
+          render();
+        }, function (err) {
+          console.error("Firestore listen failed", err);
+          setSync("off");
+        });
+      } catch (e) {
+        console.error("Firebase init failed", e);
+        setSync("off");
+      }
+    } else {
+      loadLocal();
+      setSync("localonly");
+    }
+
     render();
-  })();
+  }
+
+  init();
 })();
 </script>

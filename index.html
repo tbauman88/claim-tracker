@@ -378,15 +378,16 @@
   .btn:hover { border-color: var(--indigo); }
   .cell.locked { cursor: default; }
   .cell.locked:hover { border-color: var(--hair-strong); }
+  .sbar { height: 6px; border-radius: 5px; background: var(--hair); overflow: hidden; display: flex; margin: 8px 0 2px; }
+  .sbar i { height: 100%; display: block; transition: width .35s ease; }
+  .sbar .seg-pass { background: var(--pass); }
+  .sbar .seg-fail { background: var(--fail); }
+  .row .name .tag-ip { color: var(--indigo); background: #eaf0fb; border-color: #d6e1f6; }
+  .row .name .tag-op { color: #0b6e7d; background: #e2f4f7; border-color: #bfe3e9; }
 </style>
 
 <div class="wrap">
   <div class="banner" id="viewBanner" hidden>Read-only view — this board updates live as the team validates claims. You can't make changes here.</div>
-  <nav class="tabs" role="tablist" aria-label="Test suite">
-    <button class="tab" id="tab-e2e_med" role="tab" type="button">E2E Medicare <span class="tabpct">0%</span></button>
-    <button class="tab" id="tab-e2e_madv" role="tab" type="button">E2E Medicare ADV <span class="tabpct">0%</span></button>
-    <button class="tab" id="tab-e2e_comm" role="tab" type="button">E2E Commercial <span class="tabpct">0%</span></button>
-  </nav>
   <header class="masthead">
     <div class="title-block">
       <p class="eyebrow">Validate.Pricing · QC Status</p>
@@ -429,11 +430,6 @@
 <div class="toast" id="toast"></div>
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import {
-  getFirestore, doc, onSnapshot, setDoc
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
 /* ============================================================
    STEP 1 — paste your Firebase web config between the braces.
    Firebase console -> Project settings -> "Your apps" -> Web app.
@@ -481,24 +477,20 @@ const SHARED_DOC_ID = "shared";
   var GLYPH = { pending: "", pass: "✓", fail: "✗" };
   var KEY = "claim-validation-tracker:v1";
 
-  var TABS = [
+  var SECTIONS = [
     { id: "e2e_med",     label: "Medicare" },
-    { id: "e2e_madv",    label: "Medicare Adv" },
+    { id: "e2e_madv",    label: "Medicare Advantage" },
     { id: "e2e_comm",    label: "Commercial" }
   ];
 
   var PAYER_KEY = { e2e_med: "med", e2e_madv: "madv", e2e_comm: "comm" };
-  function isTab(id) { return TABS.some(function (t) { return t.id === id; }); }
 
-  var data = {};            // tabId -> { catId -> [statuses] }
-  var active = "e2e_med";
-  var state;                // live reference to data[active]
+  var data = {};            // sectionId -> { catId -> [statuses] }
   var lastUpdated = null;
 
   var READONLY = /[?&]view=1\b/.test(location.search) || location.hash.replace("#", "") === "view";
-  var ACTIVE_KEY = KEY + ":active";
   var USING_FB = !!(firebaseConfig && firebaseConfig.projectId && firebaseConfig.projectId.indexOf("PASTE") === -1);
-  var dbDoc = null, lastWrittenStamp = null, writeTimer = null;
+  var dbDoc = null, lastWrittenStamp = null, writeTimer = null, fbSetDoc = null;
 
   function catsFor(tabId) {
     if (tabId === "integration") return CATS.slice();
@@ -540,27 +532,15 @@ const SHARED_DOC_ID = "shared";
   // ---- shared-state helpers ----
   function buildBlank() {
     data = {};
-    TABS.forEach(function (t) { data[t.id] = blank(t.id); });
-    if (!isTab(active)) active = TABS[0].id;
-    state = data[active];
+    SECTIONS.forEach(function (s) { data[s.id] = blank(s.id); });
   }
 
-  function migrateLegacy() { /* older single-/dual-tab formats no longer in use */ }
+  function migrateLegacy() { /* older formats no longer in use */ }
 
   function reconcileAll() {
-    TABS.forEach(function (t) {
-      if (!data[t.id]) data[t.id] = blank(t.id);
-      reconcile(data[t.id], t.id);
+    SECTIONS.forEach(function (s) {
+      if (!data[s.id]) data[s.id] = blank(s.id); else reconcile(data[s.id], s.id);
     });
-    if (!isTab(active)) active = TABS[0].id;
-    state = data[active];
-  }
-
-  function loadActive() {
-    try { var a = localStorage.getItem(ACTIVE_KEY); if (a && isTab(a)) active = a; } catch (e) {}
-  }
-  function saveActive() {
-    try { localStorage.setItem(ACTIVE_KEY, active); } catch (e) {}
   }
 
   // ---- browser-only fallback (used until Firebase config is filled in) ----
@@ -590,13 +570,13 @@ const SHARED_DOC_ID = "shared";
     reconcileAll();
   }
   function saveRemote() {
-    if (READONLY || !dbDoc) return;
+    if (READONLY || !dbDoc || !fbSetDoc) return;
     lastUpdated = new Date().toISOString();
     lastWrittenStamp = lastUpdated;
     var payload = { data: data, updated: lastUpdated };
     clearTimeout(writeTimer);
     writeTimer = setTimeout(function () {
-      setDoc(dbDoc, payload)
+      fbSetDoc(dbDoc, payload)
         .then(function () { setSync("live"); })
         .catch(function (err) { console.error("Firestore write failed", err); setSync("off"); });
     }, 350);
@@ -609,10 +589,12 @@ const SHARED_DOC_ID = "shared";
   }
 
   // ---- math ----
-  function tally(ids) {
+  function pct(n, d) { return d ? Math.round((n / d) * 100) : 0; }
+
+  function tallySec(sid) {
     var pass = 0, fail = 0, pend = 0, total = 0;
-    ids.forEach(function (id) {
-      state[id].forEach(function (st) {
+    catsFor(sid).forEach(function (c) {
+      (data[sid][c.id] || []).forEach(function (st) {
         total++;
         if (st === "pass") pass++;
         else if (st === "fail") fail++;
@@ -621,20 +603,20 @@ const SHARED_DOC_ID = "shared";
     });
     return { pass: pass, fail: fail, pend: pend, total: total };
   }
-  function pct(n, d) { return d ? Math.round((n / d) * 100) : 0; }
 
-  function groupOrder(tabId) {
-    var out = [];
-    catsFor(tabId).forEach(function (c) { if (out.indexOf(c.group) === -1) out.push(c.group); });
-    return out;
+  function tallyAll() {
+    var a = { pass: 0, fail: 0, pend: 0, total: 0 };
+    SECTIONS.forEach(function (s) {
+      var t = tallySec(s.id);
+      a.pass += t.pass; a.fail += t.fail; a.pend += t.pend; a.total += t.total;
+    });
+    return a;
   }
 
-  function tabPct(tabId) {
-    var ts = data[tabId], pass = 0, total = 0;
-    catsFor(tabId).forEach(function (c) {
-      ts[c.id].forEach(function (st) { total++; if (st === "pass") pass++; });
-    });
-    return pct(pass, total);
+  function groupPill(c) {
+    var g = c.group === "OPPS" ? "Outpatient" : c.group;
+    var cls = g === "Inpatient" ? "tag-ip" : "tag-op";
+    return '<span class="tag ' + cls + '">' + g + '</span>';
   }
 
   function setSync(name) {
@@ -648,52 +630,33 @@ const SHARED_DOC_ID = "shared";
       "Connecting\u2026";
   }
 
-  function switchTab(id) {
-    if (id === active) return;
-    active = id;
-    state = data[active];
-    render();
-    saveActive();
-  }
-
-  function renderTabs() {
-    TABS.forEach(function (t) {
-      var btn = document.getElementById("tab-" + t.id);
-      if (!btn) return;
-      btn.classList.toggle("active", t.id === active);
-      btn.setAttribute("aria-selected", t.id === active ? "true" : "false");
-      var badge = btn.querySelector(".tabpct");
-      if (badge) badge.textContent = tabPct(t.id) + "%";
-    });
-  }
-
   // ---- render ----
   function render() {
     var host = document.getElementById("groups");
     host.innerHTML = "";
-    groupOrder(active).forEach(function (g) {
-      var cats = catsFor(active).filter(function (c) { return c.group === g; });
-      var t = tally(cats.map(function (c) { return c.id; }));
+    SECTIONS.forEach(function (s) {
+      var t = tallySec(s.id);
 
       var sec = document.createElement("section");
       sec.className = "group";
       sec.innerHTML =
-        '<div class="group-head"><h2>' + g + '</h2>' +
+        '<div class="group-head"><h2>' + s.label + '</h2>' +
         '<div class="gpct"><b>' + pct(t.pass, t.total) + '%</b> validated · ' +
-        t.pass + '/' + t.total + (t.fail ? ' · ' + t.fail + ' failed' : '') + '</div></div>';
+        t.pass + '/' + t.total + (t.fail ? ' · ' + t.fail + ' failed' : '') + '</div></div>' +
+        '<div class="sbar"><i class="seg-pass" style="width:' + pct(t.pass, t.total) + '%"></i>' +
+        '<i class="seg-fail" style="width:' + pct(t.fail, t.total) + '%"></i></div>';
 
-      cats.forEach(function (c) {
-        sec.appendChild(rowEl(c));
+      catsFor(s.id).forEach(function (c) {
+        sec.appendChild(rowEl(c, s.id));
       });
       host.appendChild(sec);
     });
     renderHeadline();
     renderStamp();
-    renderTabs();
   }
 
-  function rowEl(c) {
-    var arr = state[c.id];
+  function rowEl(c, sid) {
+    var arr = data[sid][c.id];
     var p = arr.filter(function (s) { return s === "pass"; }).length;
     var f = arr.filter(function (s) { return s === "fail"; }).length;
 
@@ -702,15 +665,7 @@ const SHARED_DOC_ID = "shared";
 
     var nm = document.createElement("div");
     nm.className = "name";
-    if (active === "integration") {
-      var chips = "";
-      if (c.payers.med > 0)  chips += '<span class="tag tag-med" title="Medicare">MED</span>';
-      if (c.payers.madv > 0) chips += '<span class="tag tag-madv" title="Medicare Advantage">ADV</span>';
-      if (c.payers.comm > 0) chips += '<span class="tag tag-nonmed" title="Commercial">COM</span>';
-      nm.innerHTML = c.name + chips;
-    } else {
-      nm.textContent = c.name;
-    }
+    nm.innerHTML = c.name + groupPill(c);
 
     var cells = document.createElement("div");
     cells.className = "cells";
@@ -720,7 +675,7 @@ const SHARED_DOC_ID = "shared";
       b.type = "button";
       b.textContent = GLYPH[st];
       b.setAttribute("aria-label", c.name + " claim " + (i + 1) + ": " + st);
-      if (READONLY) { b.disabled = true; } else { b.onclick = function () { cycle(c.id, i); }; }
+      if (READONLY) { b.disabled = true; } else { b.onclick = function () { cycle(sid, c.id, i); }; }
       cells.appendChild(b);
     });
 
@@ -735,7 +690,7 @@ const SHARED_DOC_ID = "shared";
   }
 
   function renderHeadline() {
-    var t = tally(catsFor(active).map(function (c) { return c.id; }));
+    var t = tallyAll();
     document.getElementById("hPct").textContent = pct(t.pass, t.total);
     document.getElementById("hSub").textContent = t.pass + " / " + t.total + " validated";
     document.getElementById("cPass").textContent = t.pass;
@@ -753,57 +708,16 @@ const SHARED_DOC_ID = "shared";
     el.textContent = "Last updated " + d.toLocaleString();
   }
 
-  function cycle(id, i) {
+  function cycle(sid, id, i) {
     if (READONLY) return;
-    var cur = state[id][i];
+    var cur = data[sid][id][i];
     var next = STATES[(STATES.indexOf(cur) + 1) % STATES.length];
-    state[id][i] = next;
+    data[sid][id][i] = next;
     render();
     save();
   }
 
-  // ---- export helpers ----
-  function summaryText() {
-    var t = tally(catsFor(active).map(function (c) { return c.id; }));
-    var lines = [];
-    lines.push("CLAIM VALIDATION STATUS — " + new Date().toLocaleDateString());
-    lines.push("Overall: " + pct(t.pass, t.total) + "% validated (" + t.pass + "/" + t.total + ")"
-      + (t.fail ? "  |  " + t.fail + " failed" : "") + (t.pend ? "  |  " + t.pend + " pending" : ""));
-    lines.push("");
-    groupOrder(active).forEach(function (g) {
-      lines.push(g.toUpperCase());
-      catsFor(active).filter(function (c) { return c.group === g; }).forEach(function (c) {
-        var arr = state[c.id];
-        var p = arr.filter(function (s) { return s === "pass"; }).length;
-        var f = arr.filter(function (s) { return s === "fail"; }).length;
-        var label = "  " + c.name + ":";
-        while (label.length < 28) label += " ";
-        lines.push(label + p + "/" + totalFor(c, active) + " (" + pct(p, totalFor(c, active)) + "%)" + (f ? "  [" + f + " failed]" : ""));
-      });
-      lines.push("");
-    });
-    return lines.join("\n").trim();
-  }
-
-  function csvText() {
-    var rows = [["Group", "Pricing Method", "Validated", "Failed", "Pending", "Total", "Percent"]];
-    catsFor(active).forEach(function (c) {
-      var arr = state[c.id];
-      var p = arr.filter(function (s) { return s === "pass"; }).length;
-      var f = arr.filter(function (s) { return s === "fail"; }).length;
-      var pe = arr.filter(function (s) { return s === "pending"; }).length;
-      rows.push([c.group, c.name, p, f, pe, totalFor(c, active), pct(p, totalFor(c, active)) + "%"]);
-    });
-    var t = tally(catsFor(active).map(function (c) { return c.id; }));
-    rows.push(["TOTAL", "All methods", t.pass, t.fail, t.pend, t.total, pct(t.pass, t.total) + "%"]);
-    return rows.map(function (r) {
-      return r.map(function (v) {
-        v = String(v);
-        return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
-      }).join(",");
-    }).join("\n");
-  }
-
+  // ---- toast ----
   function toast(msg) {
     var el = document.getElementById("toast");
     el.textContent = msg;
@@ -812,40 +726,7 @@ const SHARED_DOC_ID = "shared";
     el._t = setTimeout(function () { el.classList.remove("show"); }, 1800);
   }
 
-  function copySummary() {
-    var txt = summaryText();
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(txt).then(
-        function () { toast("Summary copied to clipboard"); },
-        function () { fallbackCopy(txt); }
-      );
-    } else { fallbackCopy(txt); }
-  }
-  function fallbackCopy(txt) {
-    var ta = document.createElement("textarea");
-    ta.value = txt; document.body.appendChild(ta); ta.select();
-    try { document.execCommand("copy"); toast("Summary copied to clipboard"); }
-    catch (e) { toast("Copy failed — select & copy manually"); }
-    document.body.removeChild(ta);
-  }
-
-  function downloadCsv() {
-    var blob = new Blob([csvText()], { type: "text/csv;charset=utf-8" });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement("a");
-    a.href = url;
-    a.download = "claim-validation-" + new Date().toISOString().slice(0, 10) + ".csv";
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast("CSV downloaded");
-  }
-
   // ---- wire up ----
-  TABS.forEach(function (t) {
-    var btn = document.getElementById("tab-" + t.id);
-    if (btn) btn.onclick = function () { switchTab(t.id); };
-  });
-
   function setupShareButton() {
     var b = document.getElementById("btnShare");
     if (!b) return;
@@ -862,8 +743,7 @@ const SHARED_DOC_ID = "shared";
     };
   }
 
-  function init() {
-    loadActive();
+  async function init() {
     buildBlank();                 // render something before remote data arrives
 
     if (READONLY) {
@@ -873,14 +753,18 @@ const SHARED_DOC_ID = "shared";
       if (hint) hint.textContent = "Live status — updates automatically";
     }
     setupShareButton();
+    render();                     // paint the board immediately, before any network
 
     if (USING_FB) {
       setSync("connecting");
       try {
-        var app = initializeApp(firebaseConfig);
-        var db = getFirestore(app);
-        dbDoc = doc(db, "trackers", SHARED_DOC_ID);
-        onSnapshot(dbDoc, function (snap) {
+        var appMod = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
+        var fsMod = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+        var app = appMod.initializeApp(firebaseConfig);
+        var db = fsMod.getFirestore(app);
+        fbSetDoc = fsMod.setDoc;
+        dbDoc = fsMod.doc(db, "trackers", SHARED_DOC_ID);
+        fsMod.onSnapshot(dbDoc, function (snap) {
           if (snap.exists()) {
             applyRemote(snap.data());
           } else if (!READONLY) {
@@ -894,15 +778,15 @@ const SHARED_DOC_ID = "shared";
           setSync("off");
         });
       } catch (e) {
-        console.error("Firebase init failed", e);
+        console.error("Firebase load/init failed (offline or blocked) — showing board without sync", e);
         setSync("off");
+        render();
       }
     } else {
       loadLocal();
       setSync("localonly");
+      render();
     }
-
-    render();
   }
 
   init();

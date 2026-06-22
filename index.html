@@ -456,13 +456,13 @@ const SHARED_DOC_ID = "shared";
     { id: "apr_drg",       name: "APR-DRG",               group: "Inpatient",  payers: { med: 0, madv: 0, comm: 5 } },
     { id: "ip_stoploss",   name: "IP Stoploss",           group: "Inpatient",  payers: { med: 0, madv: 0, comm: 5 } },
     { id: "ip_case_rates", name: "IP Case Rates",         group: "Inpatient",  payers: { med: 0, madv: 0, comm: 4 } },
-    { id: "per_diems",     name: "Per Diems",             group: "Inpatient",  payers: { med: 2, madv: 3, comm: 0 } },
+    { id: "per_diems",     name: "Per Diems",             group: "Inpatient",  payers: { med: 1, madv: 3, comm: 0, cah: 1 } },
     { id: "ip_carveouts",  name: "IP Carve-Outs",         group: "Inpatient",  payers: { med: 0, madv: 0, comm: 5 } },
     { id: "ip_pct",        name: "IP Percent of Charges", group: "Inpatient",  payers: { med: 0, madv: 1, comm: 4 } },
     { id: "apc_rates",     name: "APC Rates",             group: "Outpatient", payers: { med: 8, madv: 0, comm: 0 } },
     { id: "asc",           name: "ASC",                   group: "Outpatient", payers: { med: 0, madv: 0, comm: 5 } },
     { id: "apg",           name: "APG",                   group: "Outpatient", payers: { med: 0, madv: 0, comm: 5 } },
-    { id: "op_case_rates", name: "OP Case Rates",         group: "Outpatient", payers: { med: 0, madv: 0, comm: 5 } },
+    { id: "op_case_rates", name: "OP Case Rates",         group: "Outpatient", payers: { med: 0, madv: 0, comm: 5, cah: 2 } },
     { id: "op_pct",        name: "OP Percent of Charges", group: "Outpatient", payers: { med: 0, madv: 0, comm: 5 } },
     { id: "op_carveouts",  name: "OP Carve-Outs",         group: "Outpatient", payers: { med: 0, madv: 0, comm: 5 } },
     { id: "op_stoploss",   name: "OP Stoploss",           group: "Outpatient", payers: { med: 0, madv: 0, comm: 5 } },
@@ -471,7 +471,8 @@ const SHARED_DOC_ID = "shared";
     { id: "bundle",        name: "Bundle",                group: "Outpatient", payers: { med: 5, madv: 0, comm: 0 } },
     { id: "apc_cfs",       name: "APC / CFS",             group: "OPPS",       payers: { med: 6, madv: 3, comm: 0 } },
     { id: "apc_pfs",       name: "APC / PFS",             group: "OPPS",       payers: { med: 6, madv: 2, comm: 0 } },
-    { id: "apc_cfs_pfs",   name: "APC / CFS / PFS",       group: "OPPS",       payers: { med: 0, madv: 3, comm: 0 } }
+    { id: "apc_cfs_pfs",   name: "APC / CFS / PFS",       group: "OPPS",       payers: { med: 0, madv: 3, comm: 0 } },
+    { id: "cah_pct_pfs",   name: "Percent of Charges + PFS", group: "Outpatient", payers: { med: 0, madv: 0, comm: 0, cah: 3 } }
   ];
   var STATES = ["pending", "pass", "fail"];
   var GLYPH = { pending: "", pass: "✓", fail: "✗" };
@@ -479,11 +480,12 @@ const SHARED_DOC_ID = "shared";
 
   var SECTIONS = [
     { id: "e2e_med",     label: "Medicare" },
+    { id: "e2e_cah",     label: "Medicare CAH" },
     { id: "e2e_madv",    label: "Medicare Advantage" },
     { id: "e2e_comm",    label: "Commercial" }
   ];
 
-  var PAYER_KEY = { e2e_med: "med", e2e_madv: "madv", e2e_comm: "comm" };
+  var PAYER_KEY = { e2e_med: "med", e2e_cah: "cah", e2e_madv: "madv", e2e_comm: "comm" };
 
   var data = {};            // sectionId -> { catId -> [statuses] }
   var lastUpdated = null;
@@ -681,7 +683,7 @@ const SHARED_DOC_ID = "shared";
 
     var ro = document.createElement("div");
     ro.className = "readout";
-    ro.innerHTML = '<b>' + p + '</b>/' + arr.length + ' · <span class="pct">' + pct(p, arr.length) + '%</span>';
+    ro.innerHTML = '<b>' + p + '</b>/' + arr.length;
 
     row.appendChild(nm);
     row.appendChild(cells);
